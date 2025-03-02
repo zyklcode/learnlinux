@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "*.cu": "cuda",
+        "errno.h": "c",
+        "error.h": "c",
+        "stat.h": "c",
+        "stdio.h": "c",
+        "blockq.h": "c",
+        "stdlib.h": "c"
+    }
+}
