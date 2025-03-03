@@ -28,15 +28,57 @@ typedef struct process_control_block{
 }process_control_block;
 
 
-int send_fd_to_child_process(int pipefd, int peerfd){
-    write(pipefd, &peerfd, sizeof(int));
-    return 0;
+void send_fd_to_child_process(int pipefd, int peerfd){
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
+    // 第二组数据
+    char buffer[4] = {0};
+    struct iovec iov;
+    iov.iov_base = buffer;
+    iov.iov_len = sizeof(buffer);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    // 第三组数据
+    int len = CMSG_LEN(sizeof(peerfd));
+    struct cmsghdr *cmsg = (struct cmsghdr*)malloc(len);
+    cmsg->cmsg_len = len;
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    *(int*)CMSG_DATA(cmsg) = peerfd;
+
+    msg.msg_control = cmsg;
+    msg.msg_controllen = len;
+
+    if(sendmsg(pipefd, &msg, 0) < 0){
+        error(1, errno, "sendmsg");
+    }
 }
 
 int recv_fd_from_parent_process(int pipefd){
-    int fd = 0;
-    read(pipefd, &fd, sizeof(int));
-    return fd;
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(msg));
+    // 第二组数据
+    char buffer[4] = {0};
+    struct iovec iov;
+    iov.iov_base = buffer;
+    iov.iov_len = sizeof(buffer);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    // 第三组数据
+    int len = CMSG_LEN(sizeof(int));
+    struct cmsghdr *cmsg = (struct cmsghdr*)malloc(len);
+    cmsg->cmsg_len = len;
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    
+    msg.msg_control = cmsg;
+    msg.msg_controllen = len;
+
+    if(recvmsg(pipefd, &msg, 0) < 0){
+        error(1, errno, "readmsg");
+    }
+    int peerfd = *(int*)CMSG_DATA(cmsg);
+    return peerfd;
 }
 
 int tcp_init(const char* ip, const char* sport){
@@ -74,6 +116,34 @@ void epoll_add(int epollfd, int otherfd, struct epoll_event* event_p){
     }
 }
 
+typedef struct filemsg{
+    int len;
+    char data[1024];
+}filemsg_t;
+
+void transfer_file(int peerfd){
+    
+    // 先发送文件名
+    char filename[] = "hello.txt";
+    filemsg_t msg;
+    memset(msg.data, 0, 1024);
+    msg.len = strlen(filename);
+    strcpy(msg.data, filename);
+    if(send(peerfd, &msg, 4 + msg.len, 0)<0){
+        error(1, errno, "send");
+    }
+
+    // 在发送文件内容
+    char contents[] = "111111111111111111111111111";
+    memset(msg.data, 0, 1024);
+    msg.len = strlen(contents);
+    strcpy(msg.data, contents);
+    if(send(peerfd, &msg, 4 + msg.len, 0)<0){
+        error(1, errno, "send");
+    }
+
+}
+
 void handle_task(int pipefd){
     printf("Child Process: Starting to work...\n");
     int peerfd = 0;
@@ -83,7 +153,8 @@ void handle_task(int pipefd){
         nums++;
         printf("Child Process: Starting to handle No.%d task...\n", nums);
         // handle the task
-        sleep(5);
+        transfer_file(peerfd);
+        // sleep(5);
         printf("Child Process: complete No.%d task...\n", nums);
         close(peerfd);
         // tell parent process
@@ -168,6 +239,7 @@ int main(int argc, char* argv[]){
                         break;
                     }
                 }
+                close(peerfd);
             }else{
                 int status = 0;
                 read(fd, &status, sizeof(status));

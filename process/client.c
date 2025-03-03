@@ -15,6 +15,14 @@
 
 #include <sys/select.h>
 
+#include<stdlib.h>
+
+
+typedef struct filemsg{
+    int len;
+    char *data;
+}filemsg_t;
+
 int main(void){
     // 声明变量
     int fd;
@@ -58,15 +66,39 @@ int main(void){
                     write(fd, buffer_send, strlen(buffer_send)+1);
                 }
                 if(FD_ISSET(fd, &read1_fds)){
-                    nbytes = read(fd, buffer_read, sizeof(buffer_read));
-                    if(nbytes == 0){
-                        goto end;
-                    }else if(nbytes == -1){
-                        close(fd);
-                        error(1, errno, "read");
-                    }else{
-                        printf("%s", buffer_read);
+                    // nbytes = read(fd, buffer_read, sizeof(buffer_read));
+                    // if(nbytes == 0){
+                    //     goto end;
+                    // }else if(nbytes == -1){
+                    //     close(fd);
+                    //     error(1, errno, "read");
+                    // }else{                       
+                    //     filemsg_t filemsg;
+                    //     filemsg.len = *(int *)buffer_read;
+                    //     filemsg.data = buffer_read + 4;
+                    //     printf("len: %d, filename:%d\n", filemsg.len, filemsg.data);
+                    // }
+                    filemsg_t filemsg;
+                    filemsg.len = 0;
+                    filemsg.data = (char *)malloc(1024);
+                    int nbytes = 0;
+                    while(1){
+                        
+                        nbytes = read(fd, &(filemsg.len), sizeof(filemsg.len));
+                        if(nbytes == 0){
+                            goto end;
+                        }
+                        // printf("%d\n", nbytes);
+                        printf("len: %d\n", filemsg.len);
+                        memset(filemsg.data, 0, 1024);
+                        nbytes = read(fd, filemsg.data, filemsg.len);
+                        if(nbytes == 0){
+                            goto end;
+                        }
+                        // printf("%d\n", nbytes);
+                        printf("contents:%s\n",filemsg.data);
                     }
+                    free(filemsg.data);
                 }
         }
         
